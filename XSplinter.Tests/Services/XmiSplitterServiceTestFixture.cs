@@ -1,3 +1,11 @@
+// ------------------------------------------------------------------------------------------------
+//  <copyright file="XmiSplitterServiceTestFixture.cs" company="Starion Group S.A.">
+//    Copyright (c) 2026 Starion Group S.A.
+// 
+//    SPDX-License-Identifier: Apache-2.0
+//  </copyright>
+//  ------------------------------------------------------------------------------------------------
+
 namespace XSplinter.Tests.Services
 {
     using System.Xml.Linq;

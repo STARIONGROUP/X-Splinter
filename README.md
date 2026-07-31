@@ -2,6 +2,17 @@
 
 **X-Splinter** is a .NET 10 command-line tool that splits a single monolithic Enterprise Architect (EA) XMI export into separate, per-package XMI files. Cross-package references are rewritten from internal `xmi:idref`s into cross-file `href="targetFile.xmi#id"` references, so the resulting files can be loaded independently while types still resolve across files (e.g. with UML4NET).
 
+[![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=STARIONGROUP_X-Splinter&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=STARIONGROUP_X-Splinter)
+[![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=STARIONGROUP_X-Splinter&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=STARIONGROUP_X-Splinter)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=STARIONGROUP_X-Splinter&metric=coverage)](https://sonarcloud.io/summary/new_code?id=STARIONGROUP_X-Splinter)
+[![Duplicated Lines (%)](https://sonarcloud.io/api/project_badges/measure?project=STARIONGROUP_X-Splinter&metric=duplicated_lines_density)](https://sonarcloud.io/summary/new_code?id=STARIONGROUP_X-Splinter)
+[![Lines of Code](https://sonarcloud.io/api/project_badges/measure?project=STARIONGROUP_X-Splinter&metric=ncloc)](https://sonarcloud.io/summary/new_code?id=STARIONGROUP_X-Splinter)
+[![Maintainability Rating](https://sonarcloud.io/api/project_badges/measure?project=STARIONGROUP_X-Splinter&metric=sqale_rating)](https://sonarcloud.io/summary/new_code?id=STARIONGROUP_X-Splinter)
+[![Reliability Rating](https://sonarcloud.io/api/project_badges/measure?project=STARIONGROUP_X-Splinter&metric=reliability_rating)](https://sonarcloud.io/summary/new_code?id=STARIONGROUP_X-Splinter)
+[![Security Rating](https://sonarcloud.io/api/project_badges/measure?project=STARIONGROUP_X-Splinter&metric=security_rating)](https://sonarcloud.io/summary/new_code?id=STARIONGROUP_X-Splinter)
+[![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=STARIONGROUP_X-Splinter&metric=sqale_index)](https://sonarcloud.io/summary/new_code?id=STARIONGROUP_X-Splinter)
+[![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=STARIONGROUP_X-Splinter&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=STARIONGROUP_X-Splinter)
+
 ## Features
 
 - Splits one EA XMI export into one output file per configured UML package.
@@ -49,6 +60,14 @@ The configuration is a JSON file describing the root container package and the c
   full EA model structure is preserved.
 
 A sample configuration is available in [`example/packages.json`](example/packages.json).
+
+## Build Status
+
+GitHub actions are used to build and test the solution.
+
+Branch | Build Status
+------- | :------------
+Development | ![Build Status](https://github.com/STARIONGROUP/X-Splinter/actions/workflows/CodeQuality.yml/badge.svg?branch=development)
 
 # License
 
