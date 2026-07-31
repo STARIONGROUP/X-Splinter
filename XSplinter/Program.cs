@@ -9,6 +9,7 @@
 namespace XSplinter
 {
     using System;
+    using System.Diagnostics.CodeAnalysis;
     using System.IO;
     using System.Text.Json;
 
@@ -22,6 +23,7 @@ namespace XSplinter
     /// Splits a monolithic Enterprise Architect XMI export into separate
     /// XMI files per package with cross-file href references.
     /// </summary>
+    [ExcludeFromCodeCoverage]
     public class Program
     {
         /// <summary>
