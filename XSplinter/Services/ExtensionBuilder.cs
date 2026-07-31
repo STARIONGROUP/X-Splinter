@@ -20,6 +20,11 @@ namespace XSplinter.Services
     public class ExtensionBuilder : IExtensionBuilder
     {
         /// <summary>
+        /// The local name of the <c>xmi:idref</c> attribute.
+        /// </summary>
+        private const string IdRefAttribute = "idref";
+
+        /// <summary>
         /// The XMI namespace URI.
         /// </summary>
         private readonly XNamespace xmi;
@@ -61,9 +66,9 @@ namespace XSplinter.Services
 
             foreach (var connector in connectors)
             {
-                var connectorId = (string?)connector.Attribute(this.xmi + "idref") ?? "";
-                var sourceId = (string?)connector.Element("source")?.Attribute(this.xmi + "idref") ?? "";
-                var targetId = (string?)connector.Element("target")?.Attribute(this.xmi + "idref") ?? "";
+                var connectorId = (string?)connector.Attribute(this.xmi + IdRefAttribute) ?? "";
+                var sourceId = (string?)connector.Element("source")?.Attribute(this.xmi + IdRefAttribute) ?? "";
+                var targetId = (string?)connector.Element("target")?.Attribute(this.xmi + IdRefAttribute) ?? "";
 
                 foreach (var packageName in packageNames)
                 {
@@ -117,7 +122,7 @@ namespace XSplinter.Services
             var filteredElements = allElements
                 .Where(element =>
                 {
-                    var idref = (string?)element.Attribute(this.xmi + "idref") ?? "";
+                    var idref = (string?)element.Attribute(this.xmi + IdRefAttribute) ?? "";
                     return packageIds.Contains(idref);
                 })
                 .Select(element => new XElement(element))
@@ -126,7 +131,7 @@ namespace XSplinter.Services
             var filteredConnectors = allConnectors
                 .Where(connector =>
                 {
-                    var idref = (string?)connector.Attribute(this.xmi + "idref") ?? "";
+                    var idref = (string?)connector.Attribute(this.xmi + IdRefAttribute) ?? "";
                     return connectorPackageMap.TryGetValue(idref, out var owner) && owner == packageName;
                 })
                 .Select(connector => new XElement(connector))

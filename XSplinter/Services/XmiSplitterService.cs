@@ -139,12 +139,15 @@ namespace XSplinter.Services
             var document = this.fileService.Load(inputPath);
             var root = document.Root!;
 
-            var rootPackage = this.FindRootPackage(root, config.RootPackageName);
-            var packageNodes = this.FindPackageNodes(rootPackage, config);
+            var rootPackage = FindRootPackage(root, config.RootPackageName);
+            var packageNodes = FindPackageNodes(rootPackage, config);
 
             var elementIndex = this.BuildElementIndex(config, packageNodes);
 
-            this.logger.LogInformation("Indexed {ElementCount} elements across {PackageCount} packages", elementIndex.Count, config.Packages.Count);
+            if (this.logger.IsEnabled(LogLevel.Information))
+            {
+                this.logger.LogInformation("Indexed {ElementCount} elements across {PackageCount} packages", elementIndex.Count, config.Packages.Count);
+            }
 
             var packageElementIds = this.BuildPackageElementIds(config, packageNodes);
 
@@ -176,7 +179,10 @@ namespace XSplinter.Services
                 var outputPath = Path.Combine(outputDirectory, packageConfig.OutputFile);
                 this.fileService.Save(outputDocument, outputPath);
 
-                this.logger.LogInformation("Written: {OutputPath}", outputPath);
+                if (this.logger.IsEnabled(LogLevel.Information))
+                {
+                    this.logger.LogInformation("Written: {OutputPath}", outputPath);
+                }
             }
 
             this.logger.LogInformation("Splitting complete");
@@ -198,7 +204,7 @@ namespace XSplinter.Services
         /// <exception cref="InvalidOperationException">
         /// Thrown when no package with the given name is found.
         /// </exception>
-        private XElement FindRootPackage(XElement root, string rootPackageName)
+        private static XElement FindRootPackage(XElement root, string rootPackageName)
         {
             var model = root.Element(Uml + "Model")
                 ?? throw new InvalidOperationException("No uml:Model element found in the XMI document.");
@@ -225,24 +231,17 @@ namespace XSplinter.Services
         /// <exception cref="InvalidOperationException">
         /// Thrown when a configured package is not found.
         /// </exception>
-        private Dictionary<string, XElement> FindPackageNodes(XElement rootPackage, SplitterConfig config)
+        private static Dictionary<string, XElement> FindPackageNodes(XElement rootPackage, SplitterConfig config)
         {
-            var packageNodes = new Dictionary<string, XElement>();
-
-            foreach (var packageConfig in config.Packages)
-            {
-                var packageElement = rootPackage
+            return config.Packages.ToDictionary(
+                packageConfig => packageConfig.Name,
+                packageConfig => rootPackage
                     .Elements("packagedElement")
                     .FirstOrDefault(element =>
                         (string?)element.Attribute(Xmi + "type") == "uml:Package"
                         && (string?)element.Attribute("name") == packageConfig.Name)
                     ?? throw new InvalidOperationException(
-                        $"Package '{packageConfig.Name}' not found under '{config.RootPackageName}'.");
-
-                packageNodes[packageConfig.Name] = packageElement;
-            }
-
-            return packageNodes;
+                        $"Package '{packageConfig.Name}' not found under '{config.RootPackageName}'."));
         }
 
         /// <summary>
@@ -291,16 +290,14 @@ namespace XSplinter.Services
             SplitterConfig config,
             Dictionary<string, XElement> packageNodes)
         {
-            var packageElementIds = new Dictionary<string, HashSet<string>>();
-
-            foreach (var packageConfig in config.Packages)
-            {
-                var ids = new HashSet<string>();
-                this.elementIndexer.CollectAllIds(packageNodes[packageConfig.Name], ids);
-                packageElementIds[packageConfig.Name] = ids;
-            }
-
-            return packageElementIds;
+            return config.Packages.ToDictionary(
+                packageConfig => packageConfig.Name,
+                packageConfig =>
+                {
+                    var ids = new HashSet<string>();
+                    this.elementIndexer.CollectAllIds(packageNodes[packageConfig.Name], ids);
+                    return ids;
+                });
         }
 
         /// <summary>

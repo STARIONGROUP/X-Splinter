@@ -27,6 +27,8 @@ namespace XSplinter.Tests.Services
         private XNamespace xmi;
         private ExtensionBuilder extensionBuilder;
 
+        private static readonly string[] PackageNames = ["Forge", "Primitives"];
+
         [SetUp]
         public void Setup()
         {
@@ -48,7 +50,7 @@ namespace XSplinter.Tests.Services
                 ["Primitives"] = ["x"]
             };
 
-            var map = this.extensionBuilder.BuildConnectorPackageMap(connectors, packageElementIds, new[] { "Forge", "Primitives" });
+            var map = this.extensionBuilder.BuildConnectorPackageMap(connectors, packageElementIds, PackageNames);
 
             Assert.That(map["conn1"], Is.EqualTo("Forge"));
         }

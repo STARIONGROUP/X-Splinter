@@ -24,8 +24,13 @@ namespace XSplinter
     /// XMI files per package with cross-file href references.
     /// </summary>
     [ExcludeFromCodeCoverage]
-    public class Program
+    public static class Program
     {
+        /// <summary>
+        /// The JSON serializer options used to deserialize the configuration file.
+        /// </summary>
+        private static readonly JsonSerializerOptions SerializerOptions = new() { PropertyNameCaseInsensitive = true };
+
         /// <summary>
         /// The application entry point.
         /// </summary>
@@ -44,7 +49,7 @@ namespace XSplinter
                     .AddConsole();
             });
 
-            var logger = loggerFactory.CreateLogger<Program>();
+            var logger = loggerFactory.CreateLogger(nameof(Program));
 
             if (args.Length < 2)
             {
@@ -56,11 +61,18 @@ namespace XSplinter
             var configPath = args[1];
             var outputDirectory = ".";
 
-            for (var argIndex = 2; argIndex < args.Length; argIndex++)
+            var argIndex = 2;
+            
+            while (argIndex < args.Length)
             {
                 if (args[argIndex] == "--output" && argIndex + 1 < args.Length)
                 {
-                    outputDirectory = args[++argIndex];
+                    outputDirectory = args[argIndex + 1];
+                    argIndex += 2;
+                }
+                else
+                {
+                    argIndex++;
                 }
             }
 
@@ -78,7 +90,7 @@ namespace XSplinter
 
             var config = JsonSerializer.Deserialize<SplitterConfig>(
                 File.ReadAllText(configPath),
-                new JsonSerializerOptions { PropertyNameCaseInsensitive = true });
+                SerializerOptions);
 
             if (config == null)
             {
