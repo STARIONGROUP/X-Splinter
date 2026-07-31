@@ -1,0 +1,8 @@
+{
+  "rootPackageName": "5. Data Structure",
+  "packages": [
+    { "name": "Primitives", "outputFile": "CSharp_Primitives.xmi", "convertToLibrary": true },
+    { "name": "Forge", "outputFile": "Forge.xmi" },
+    { "name": "FunctionalData", "outputFile": "FunctionalData.xmi" }
+  ]
+}
