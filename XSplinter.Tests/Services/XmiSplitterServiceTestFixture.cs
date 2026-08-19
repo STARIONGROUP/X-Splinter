@@ -1,73 +1,86 @@
 // ------------------------------------------------------------------------------------------------
-//  <copyright file="XmiSplitterServiceTestFixture.cs" company="Starion Group S.A.">
-//    Copyright (c) 2026 Starion Group S.A.
-// 
-//    SPDX-License-Identifier: Apache-2.0
-//  </copyright>
-//  ------------------------------------------------------------------------------------------------
+// <copyright file="XmiSplitterServiceTestFixture.cs" company="Starion Group S.A.">
+//   Copyright (c) 2026 Starion Group S.A.
+//
+//   SPDX-License-Identifier: Apache-2.0
+// </copyright>
+// ------------------------------------------------------------------------------------------------
 
 namespace XSplinter.Tests.Services
 {
-    using System.Xml.Linq;
-
     using Microsoft.Extensions.Logging.Abstractions;
 
     using Moq;
 
     using NUnit.Framework;
 
+    using uml4net;
+    using uml4net.Packages;
+    using uml4net.xmi.Readers;
+    using uml4net.xmi.Xmi;
+
     using XSplinter.Configuration;
     using XSplinter.Services;
 
     /// <summary>
-    /// Suite of tests for the <see cref="XmiSplitterService" /> orchestrator, using mocked
+    /// Suite of tests for the <see cref="XmiSplitterService"/> orchestrator, using mocked
     /// collaborators so that the orchestration logic can be exercised without touching the disk.
     /// </summary>
     [TestFixture]
     public class XmiSplitterServiceTestFixture
     {
-        private const string XmiNamespace = "http://www.omg.org/spec/XMI/20131001";
-        private const string UmlNamespace = "http://www.omg.org/spec/UML/20161101";
-
-        private Mock<IElementIndexer> elementIndexer;
-        private Mock<IReferenceRewriter> referenceRewriter;
+        private Mock<IXmiModelLoader> modelLoader;
+        private Mock<IPackageDocumentAssigner> documentAssigner;
+        private Mock<IConstraintRelocator> constraintRelocator;
         private Mock<IExtensionBuilder> extensionBuilder;
-        private Mock<IXmiFileService> fileService;
-        private List<(XDocument Document, string OutputPath)> savedDocuments;
+        private Mock<IXmiDocumentWriter> documentWriter;
+        private List<(IPackage Package, string Path, Documentation Documentation, IEnumerable<XmiExtension> Extensions, string UmlNamespaceUri)> written;
         private SplitterConfig config;
         private XmiSplitterService xmiSplitterService;
 
         [SetUp]
         public void Setup()
         {
-            this.elementIndexer = new Mock<IElementIndexer>();
-            this.referenceRewriter = new Mock<IReferenceRewriter>();
+            this.modelLoader = new Mock<IXmiModelLoader>();
+            this.documentAssigner = new Mock<IPackageDocumentAssigner>();
+            this.constraintRelocator = new Mock<IConstraintRelocator>();
+
+            this.constraintRelocator
+                .Setup(x => x.Relocate(It.IsAny<IPackage>(), It.IsAny<IEnumerable<IPackage>>()))
+                .Returns([]);
             this.extensionBuilder = new Mock<IExtensionBuilder>();
-            this.fileService = new Mock<IXmiFileService>();
+            this.documentWriter = new Mock<IXmiDocumentWriter>();
+
+            this.modelLoader.Setup(x => x.Load(It.IsAny<string>())).Returns(CreateLoadedModel);
+
+            this.documentAssigner
+                .Setup(x => x.Assign(It.IsAny<IXmiElement>(), It.IsAny<string>()))
+                .Returns(new PackageElementIds([], []));
+
+            this.extensionBuilder.Setup(x => x.CanFilter(It.IsAny<XmiExtension>())).Returns(true);
 
             this.extensionBuilder
                 .Setup(x => x.BuildConnectorPackageMap(
-                    It.IsAny<List<XElement>>(),
+                    It.IsAny<XmiExtension>(),
                     It.IsAny<Dictionary<string, HashSet<string>>>(),
                     It.IsAny<IEnumerable<string>>()))
-                .Returns(new Dictionary<string, string>());
+                .Returns([]);
 
             this.extensionBuilder
                 .Setup(x => x.Build(
+                    It.IsAny<XmiExtension>(),
                     It.IsAny<string>(),
                     It.IsAny<HashSet<string>>(),
-                    It.IsAny<List<XElement>>(),
-                    It.IsAny<List<XElement>>(),
                     It.IsAny<Dictionary<string, string>>()))
-                .Returns(new XElement(XName.Get("Extension", XmiNamespace)));
+                .Returns(new XmiExtension { Extender = "Enterprise Architect", ExtenderId = "6.5" });
 
-            this.fileService.Setup(x => x.Load(It.IsAny<string>())).Returns(CreateMonolith);
+            this.written = [];
 
-            this.savedDocuments = [];
-
-            this.fileService
-                .Setup(x => x.Save(It.IsAny<XDocument>(), It.IsAny<string>()))
-                .Callback<XDocument, string>((document, path) => this.savedDocuments.Add((document, path)));
+            this.documentWriter
+                .Setup(x => x.Write(It.IsAny<IPackage>(), It.IsAny<string>(), It.IsAny<Documentation>(), It.IsAny<IEnumerable<XmiExtension>>(), It.IsAny<string>()))
+                .Callback<IPackage, string, Documentation, IEnumerable<XmiExtension>, string>(
+                    (package, path, documentation, extensions, umlNamespaceUri) =>
+                        this.written.Add((package, path, documentation, extensions, umlNamespaceUri)));
 
             this.config = new SplitterConfig
             {
@@ -81,32 +94,11 @@ namespace XSplinter.Tests.Services
 
             this.xmiSplitterService = new XmiSplitterService(
                 NullLogger<XmiSplitterService>.Instance,
-                this.elementIndexer.Object,
-                this.referenceRewriter.Object,
+                this.modelLoader.Object,
+                this.documentAssigner.Object,
+                this.constraintRelocator.Object,
                 this.extensionBuilder.Object,
-                this.fileService.Object);
-        }
-
-        [Test]
-        public void Verify_that_a_convertToLibrary_package_is_written_as_a_plain_uml_Package()
-        {
-            this.xmiSplitterService.Split("input.xmi", this.config, "output");
-
-            var libraryDocument = this.savedDocuments.Single(document => document.OutputPath.EndsWith("CSharp_Primitives.xmi")).Document;
-            var fullDocument = this.savedDocuments.Single(document => document.OutputPath.EndsWith("Forge.xmi")).Document;
-
-            XNamespace uml = UmlNamespace;
-            XNamespace xmi = XmiNamespace;
-
-            Assert.Multiple(() =>
-            {
-                Assert.That(libraryDocument.Root!.Element(uml + "Package"), Is.Not.Null);
-                Assert.That(libraryDocument.Root!.Element(uml + "Model"), Is.Null);
-                Assert.That(libraryDocument.Descendants(xmi + "Extension"), Is.Empty);
-
-                Assert.That(fullDocument.Root!.Element(uml + "Model"), Is.Not.Null);
-                Assert.That(fullDocument.Descendants(xmi + "Extension"), Is.Not.Empty);
-            });
+                this.documentWriter.Object);
         }
 
         [Test]
@@ -114,27 +106,7 @@ namespace XSplinter.Tests.Services
         {
             this.xmiSplitterService.Split("input.xmi", this.config, "output");
 
-            this.fileService.Verify(x => x.EnsureDirectory("output"), Times.Once);
-        }
-
-        [Test]
-        public void Verify_that_Split_rewrites_references_for_each_package()
-        {
-            this.xmiSplitterService.Split("input.xmi", this.config, "output");
-
-            this.referenceRewriter.Verify(
-                x => x.Rewrite(It.IsAny<XElement>(), It.IsAny<string>(), It.IsAny<IReadOnlyDictionary<string, PackageEntry>>()),
-                Times.Exactly(2));
-        }
-
-        [Test]
-        public void Verify_that_Split_throws_when_the_root_package_is_missing()
-        {
-            this.fileService.Setup(x => x.Load(It.IsAny<string>())).Returns(CreateMonolithWithoutRoot);
-
-            Assert.That(
-                () => this.xmiSplitterService.Split("input.xmi", this.config, "output"),
-                Throws.InstanceOf<InvalidOperationException>());
+            this.documentWriter.Verify(x => x.EnsureDirectory("output"), Times.Once);
         }
 
         [Test]
@@ -144,9 +116,8 @@ namespace XSplinter.Tests.Services
 
             Assert.Multiple(() =>
             {
-                Assert.That(this.savedDocuments, Has.Count.EqualTo(2));
-
-                Assert.That(this.savedDocuments.Select(document => document.OutputPath), Is.EquivalentTo(new[]
+                Assert.That(this.written, Has.Count.EqualTo(2));
+                Assert.That(this.written.Select(document => document.Path), Is.EquivalentTo(new[]
                 {
                     Path.Combine("output", "CSharp_Primitives.xmi"),
                     Path.Combine("output", "Forge.xmi")
@@ -154,35 +125,95 @@ namespace XSplinter.Tests.Services
             });
         }
 
-        private static XDocument CreateMonolith()
+        [Test]
+        public void Verify_that_each_package_is_stamped_with_its_output_document()
         {
-            return XDocument.Parse(
-                $"<xmi:XMI xmlns:xmi=\"{XmiNamespace}\" xmlns:uml=\"{UmlNamespace}\">" +
-                "  <uml:Model xmi:type=\"uml:Model\" name=\"EA_Model\">" +
-                "    <packagedElement name=\"5. Data Structure\">" +
-                "      <packagedElement xmi:type=\"uml:Package\" xmi:id=\"pkgPrim\" name=\"Primitives\">" +
-                "        <packagedElement xmi:type=\"uml:PrimitiveType\" xmi:id=\"e1\" name=\"Text\" />" +
-                "      </packagedElement>" +
-                "      <packagedElement xmi:type=\"uml:Package\" xmi:id=\"pkgForge\" name=\"Forge\">" +
-                "        <packagedElement xmi:type=\"uml:Class\" xmi:id=\"e2\" name=\"Widget\" />" +
-                "      </packagedElement>" +
-                "    </packagedElement>" +
-                "  </uml:Model>" +
-                "  <xmi:Extension extender=\"Enterprise Architect\" extenderID=\"6.5\">" +
-                "    <elements><element xmi:idref=\"e1\" /><element xmi:idref=\"e2\" /></elements>" +
-                "    <connectors />" +
-                "  </xmi:Extension>" +
-                "</xmi:XMI>");
+            this.xmiSplitterService.Split("input.xmi", this.config, "output");
+
+            Assert.Multiple(() =>
+            {
+                this.documentAssigner.Verify(x => x.Assign(It.IsAny<IXmiElement>(), "CSharp_Primitives.xmi"), Times.Once);
+                this.documentAssigner.Verify(x => x.Assign(It.IsAny<IXmiElement>(), "Forge.xmi"), Times.Once);
+            });
         }
 
-        private static XDocument CreateMonolithWithoutRoot()
+        [Test]
+        public void Verify_that_a_convertToLibrary_package_is_written_without_a_model_wrapper_or_extension()
         {
-            return XDocument.Parse(
-                $"<xmi:XMI xmlns:xmi=\"{XmiNamespace}\" xmlns:uml=\"{UmlNamespace}\">" +
-                "  <uml:Model xmi:type=\"uml:Model\" name=\"EA_Model\">" +
-                "    <packagedElement name=\"Some Other Root\" />" +
-                "  </uml:Model>" +
-                "</xmi:XMI>");
+            this.xmiSplitterService.Split("input.xmi", this.config, "output");
+
+            var library = this.written.Single(document => document.Path.EndsWith("CSharp_Primitives.xmi"));
+            var full = this.written.Single(document => document.Path.EndsWith("Forge.xmi"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(library.Package, Is.Not.InstanceOf<IModel>());
+                Assert.That(library.Package.Name, Is.EqualTo("Primitives"));
+                Assert.That(library.Extensions, Is.Null);
+
+                Assert.That(full.Package, Is.InstanceOf<IModel>());
+                Assert.That(full.Package.Name, Is.EqualTo("EA_Model"));
+                Assert.That(full.Package.PackagedElement.OfType<IPackage>().Single().Name, Is.EqualTo("Forge"));
+                Assert.That(full.Extensions, Is.Not.Null.And.Not.Empty);
+            });
+        }
+
+        [Test]
+        public void Verify_that_the_xmi_documentation_header_is_only_written_for_full_EA_documents()
+        {
+            this.xmiSplitterService.Split("input.xmi", this.config, "output");
+
+            var library = this.written.Single(document => document.Path.EndsWith("CSharp_Primitives.xmi"));
+            var full = this.written.Single(document => document.Path.EndsWith("Forge.xmi"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(library.Documentation, Is.Null);
+                Assert.That(full.Documentation, Is.Not.Null);
+                Assert.That(full.Documentation.Exporter, Is.EqualTo("Enterprise Architect"));
+            });
+        }
+
+        [Test]
+        public void Verify_that_Split_throws_when_the_root_package_is_missing()
+        {
+            this.config.RootPackageName = "Does Not Exist";
+
+            Assert.That(
+                () => this.xmiSplitterService.Split("input.xmi", this.config, "output"),
+                Throws.InstanceOf<InvalidOperationException>());
+        }
+
+        [Test]
+        public void Verify_that_Split_throws_when_a_configured_package_is_missing()
+        {
+            this.config.Packages.Add(new PackageConfig { Name = "Missing", OutputFile = "Missing.xmi" });
+
+            Assert.That(
+                () => this.xmiSplitterService.Split("input.xmi", this.config, "output"),
+                Throws.InstanceOf<InvalidOperationException>());
+        }
+
+        private static LoadedModel CreateLoadedModel()
+        {
+            var root = new Package { XmiId = "root", Name = "5. Data Structure" };
+            root.PackagedElement.Add(new Package { XmiId = "pkgPrim", Name = "Primitives" });
+            root.PackagedElement.Add(new Package { XmiId = "pkgForge", Name = "Forge" });
+
+            var model = new Model { XmiId = "model", Name = "EA_Model" };
+            model.PackagedElement.Add(root);
+
+            var readerResult = new XmiReaderResult
+            {
+                Packages = [model],
+                XmiRoot = new XmiRoot
+                {
+                    Documentation = new Documentation { Exporter = "Enterprise Architect", ExporterVersion = "6.5" },
+                    Extensions = [new XmiExtension { Extender = "Enterprise Architect", ExtenderId = "6.5" }]
+                }
+            };
+
+            return new LoadedModel(readerResult, "http://www.omg.org/spec/UML/20161101");
         }
     }
 }

@@ -20,6 +20,11 @@ namespace XSplinter.Configuration
         /// Gets or sets the name of the root container package in the XMI
         /// (e.g. "5. Data Structure").
         /// </summary>
+        /// <remarks>
+        /// Optional. When set, only that package and its descendants are searched for the
+        /// configured packages. When left empty, the whole document is searched, which suits
+        /// exports whose packages sit directly under the model.
+        /// </remarks>
         public string RootPackageName { get; set; } = "";
 
         /// <summary>
