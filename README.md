@@ -41,6 +41,8 @@ dotnet run --project XSplinter/XSplinter.csproj -- <input.xmi> <config.json> [--
 
 - `rootPackageName` — *optional*; the root container package to scope the search to. Omit it when
   the packages sit directly under the model.
+- `modelName` — *optional*; the name of the `uml:Model` wrapper written around each extracted
+  package. Defaults to the name of the model enclosing the package in the source document.
 - `packages[]` — the packages to extract, each with a `name`, an `outputFile` and an optional
   `convertToLibrary` flag. When `true`, the package is written as a plain `uml:Package` without
   the EA model wrapper or extension metadata; when `false` (default), the full EA model

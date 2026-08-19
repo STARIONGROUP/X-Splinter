@@ -41,8 +41,10 @@ JSON, deserialized into `SplitterConfig` (case-insensitive). Sample: `example/pa
 
 - `rootPackageName` — *optional* root container package to scope the search to. Omit it when
   the packages sit directly under the model.
+- `modelName` — *optional* name for the `uml:Model` wrapper. Defaults to the name of the model
+  enclosing the package in the source. Not used for `convertToLibrary` packages.
 - `packages[]` — `name`, `outputFile`, and optional `convertToLibrary` (default `false`):
-  - `false` → mirrors the source: the `uml:Model` wrapper (same name as the source's model)
+  - `false` → the `uml:Model` wrapper (named by `modelName`, else the source's model name)
     plus the filtered `xmi:Extension`. No wrapper is written if the source had none.
   - `true` → plain `uml:Package`, no model wrapper or extension.
 
@@ -64,7 +66,7 @@ mockable.
 | --- | --- |
 | `Program.cs` | Entry point: parses args, deserializes the config, calls `Split`. |
 | `Configuration/SplitterConfig.cs`, `PackageConfig.cs` | Config models. |
-| `Services/XmiSplitterService.cs` | Orchestrator: load → find packages (recursively, optionally scoped by `rootPackageName`) → stamp → map connectors → write. Mirrors the source's `uml:Model` wrapper rather than assuming one. Has a convenience ctor and an injectable ctor. |
+| `Services/XmiSplitterService.cs` | Orchestrator: load → find packages (recursively, optionally scoped by `rootPackageName`) → stamp → map connectors → write. Names the `uml:Model` wrapper from `modelName`, else mirrors the source's. Has a convenience ctor and an injectable ctor. |
 | `Services/XmiModelLoader.cs` | UML4NET read, with the EA extender + extension content reader (inert for non-EA files). Also detects the source's UML namespace so output matches the input's UML version. |
 | `Services/PackageDocumentAssigner.cs` | Stamps `IXmiElement.DocumentName`. Traverses only `AggregationKind.Composite` properties (from UML4NET `[Property]` metadata) so *referenced* elements keep pointing at their own document. Returns contained + referenced ids. |
 | `Services/ExtensionBuilder.cs` | Filters the EA extension per package, deciding membership from the parsed EA `Element`/`Connector` and their resolved `ExtendedElement`. `CanFilter` is false for a foreign extension, which is then copied unchanged into every output. |

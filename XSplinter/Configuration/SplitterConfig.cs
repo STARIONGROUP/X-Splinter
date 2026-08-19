@@ -28,6 +28,18 @@ namespace XSplinter.Configuration
         public string RootPackageName { get; set; } = "";
 
         /// <summary>
+        /// Gets or sets the name of the <c>uml:Model</c> wrapper written around each extracted
+        /// package (e.g. "EA_Model").
+        /// </summary>
+        /// <remarks>
+        /// Optional. When left empty the name of the model that encloses the package in the source
+        /// document is reused, so the output mirrors the input. The wrapper is not written at all
+        /// for packages marked <see cref="PackageConfig.ConvertToLibrary"/>, nor when the source
+        /// has no model.
+        /// </remarks>
+        public string ModelName { get; set; } = "";
+
+        /// <summary>
         /// Gets or sets the list of packages to extract into separate XMI files.
         /// </summary>
         public List<PackageConfig> Packages { get; set; } = [];

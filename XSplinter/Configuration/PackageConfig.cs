@@ -27,6 +27,18 @@ namespace XSplinter.Configuration
         public string OutputFile { get; set; } = "";
 
         /// <summary>
+        /// Gets or sets the name of the top level element written to this package's output file.
+        /// </summary>
+        /// <remarks>
+        /// Optional, and takes precedence over <see cref="SplitterConfig.ModelName"/>. For a normal
+        /// package this names the <c>uml:Model</c> wrapper; for a <see cref="ConvertToLibrary"/>
+        /// package, which has no wrapper, it renames the <c>uml:Package</c> itself. When left empty
+        /// the wrapper keeps the name of the model enclosing the package in the source document and
+        /// a library package keeps its own name.
+        /// </remarks>
+        public string ModelName { get; set; } = "";
+
+        /// <summary>
         /// Gets or sets a value indicating whether this package should be converted into a
         /// simple reusable library. When <c>false</c> (the default), the package is written
         /// as a full Enterprise Architect model (<c>uml:Model name="EA_Model"</c> wrapper and
