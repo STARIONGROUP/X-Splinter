@@ -100,8 +100,7 @@ namespace XSplinter
 
             try
             {
-                var splitterLogger = loggerFactory.CreateLogger<XmiSplitterService>();
-                var splitter = new XmiSplitterService(splitterLogger);
+                var splitter = new XmiSplitterService(loggerFactory);
                 splitter.Split(inputPath, config, outputDirectory);
                 return 0;
             }

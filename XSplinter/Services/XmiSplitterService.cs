@@ -12,73 +12,67 @@ namespace XSplinter.Services
     using System.Collections.Generic;
     using System.IO;
     using System.Linq;
-    using System.Xml.Linq;
 
     using Microsoft.Extensions.Logging;
+
+    using uml4net;
+    using uml4net.Packages;
 
     using XSplinter.Configuration;
 
     /// <summary>
-    /// Orchestrates the splitting of a monolithic Enterprise Architect XMI export
-    /// into separate XMI files per package, rewriting cross-package references
-    /// into <c>href</c> attributes that can be resolved by UML4NET.
+    /// Orchestrates the splitting of a monolithic Enterprise Architect XMI export into separate
+    /// XMI files per package. The document is read into the UML4NET object model; each extracted
+    /// package is stamped with the document it is written to, so that UML4NET emits cross-package
+    /// references as <c>href</c> attributes pointing at the corresponding split file.
     /// </summary>
     public class XmiSplitterService : IXmiSplitterService
     {
-        /// <summary>
-        /// The XMI namespace URI.
-        /// </summary>
-        private static readonly XNamespace Xmi = "http://www.omg.org/spec/XMI/20131001";
-
-        /// <summary>
-        /// The UML namespace URI.
-        /// </summary>
-        private static readonly XNamespace Uml = "http://www.omg.org/spec/UML/20161101";
-
-        /// <summary>
-        /// The UML DI namespace URI.
-        /// </summary>
-        private static readonly XNamespace Umldi = "http://www.omg.org/spec/UML/20161101/UMLDI";
-
-        /// <summary>
-        /// The UML DC namespace URI.
-        /// </summary>
-        private static readonly XNamespace Dc = "http://www.omg.org/spec/UML/20161101/UMLDC";
-
         /// <summary>
         /// The <see cref="ILogger{T}"/> used to log diagnostic messages.
         /// </summary>
         private readonly ILogger<XmiSplitterService> logger;
 
         /// <summary>
-        /// The element indexer used to build the element-to-package mapping.
+        /// The loader used to read the monolithic document into the UML4NET object model.
         /// </summary>
-        private readonly IElementIndexer elementIndexer;
+        private readonly IXmiModelLoader modelLoader;
 
         /// <summary>
-        /// The reference rewriter used to convert cross-package references into cross-file hrefs.
+        /// The assigner used to stamp each package subtree with its target document name.
         /// </summary>
-        private readonly IReferenceRewriter referenceRewriter;
+        private readonly IPackageDocumentAssigner documentAssigner;
 
         /// <summary>
-        /// The extension builder used to create filtered EA Extension sections.
+        /// The relocator used to move root-owned constraints into the package they constrain.
+        /// </summary>
+        private readonly IConstraintRelocator constraintRelocator;
+
+        /// <summary>
+        /// The extension builder used to create filtered EA extension sections.
         /// </summary>
         private readonly IExtensionBuilder extensionBuilder;
 
         /// <summary>
-        /// The file service used to load the input document and persist the outputs.
+        /// The writer used to persist the split documents.
         /// </summary>
-        private readonly IXmiFileService fileService;
+        private readonly IXmiDocumentWriter documentWriter;
 
         /// <summary>
         /// Initializes a new instance of the <see cref="XmiSplitterService"/> class,
         /// wiring up the default concrete collaborators.
         /// </summary>
-        /// <param name="logger">
-        /// The <see cref="ILogger{T}"/> used to log diagnostic messages.
+        /// <param name="loggerFactory">
+        /// The <see cref="ILoggerFactory"/> used to set up logging.
         /// </param>
-        public XmiSplitterService(ILogger<XmiSplitterService> logger)
-            : this(logger, new ElementIndexer(Xmi), new ReferenceRewriter(Xmi), new ExtensionBuilder(Xmi), new XmiFileService())
+        public XmiSplitterService(ILoggerFactory loggerFactory)
+            : this(
+                loggerFactory.CreateLogger<XmiSplitterService>(),
+                new XmiModelLoader(loggerFactory),
+                new PackageDocumentAssigner(),
+                new ConstraintRelocator(),
+                new ExtensionBuilder(),
+                new XmiDocumentWriter(loggerFactory))
         {
         }
 
@@ -89,95 +83,146 @@ namespace XSplinter.Services
         /// <param name="logger">
         /// The <see cref="ILogger{T}"/> used to log diagnostic messages.
         /// </param>
-        /// <param name="elementIndexer">
-        /// The <see cref="IElementIndexer"/> used to build the element-to-package mapping.
+        /// <param name="modelLoader">
+        /// The <see cref="IXmiModelLoader"/> used to read the monolithic document.
         /// </param>
-        /// <param name="referenceRewriter">
-        /// The <see cref="IReferenceRewriter"/> used to rewrite cross-package references.
+        /// <param name="documentAssigner">
+        /// The <see cref="IPackageDocumentAssigner"/> used to stamp the target document names.
+        /// </param>
+        /// <param name="constraintRelocator">
+        /// The <see cref="IConstraintRelocator"/> used to move root-owned constraints.
         /// </param>
         /// <param name="extensionBuilder">
-        /// The <see cref="IExtensionBuilder"/> used to create filtered EA Extension sections.
+        /// The <see cref="IExtensionBuilder"/> used to create filtered EA extension sections.
         /// </param>
-        /// <param name="fileService">
-        /// The <see cref="IXmiFileService"/> used to load and save documents.
+        /// <param name="documentWriter">
+        /// The <see cref="IXmiDocumentWriter"/> used to persist the split documents.
         /// </param>
         public XmiSplitterService(
             ILogger<XmiSplitterService> logger,
-            IElementIndexer elementIndexer,
-            IReferenceRewriter referenceRewriter,
+            IXmiModelLoader modelLoader,
+            IPackageDocumentAssigner documentAssigner,
+            IConstraintRelocator constraintRelocator,
             IExtensionBuilder extensionBuilder,
-            IXmiFileService fileService)
+            IXmiDocumentWriter documentWriter)
         {
             this.logger = logger;
-            this.elementIndexer = elementIndexer;
-            this.referenceRewriter = referenceRewriter;
+            this.modelLoader = modelLoader;
+            this.documentAssigner = documentAssigner;
+            this.constraintRelocator = constraintRelocator;
             this.extensionBuilder = extensionBuilder;
-            this.fileService = fileService;
+            this.documentWriter = documentWriter;
         }
 
-        /// <summary>
-        /// Splits the monolithic XMI file at <paramref name="inputPath"/> into
-        /// separate files according to the provided <paramref name="config"/>,
-        /// writing the results to the <paramref name="outputDirectory"/>.
-        /// </summary>
-        /// <param name="inputPath">
-        /// The path to the monolithic XMI file exported from Enterprise Architect.
-        /// </param>
-        /// <param name="config">
-        /// The splitter configuration defining the root package and child packages.
-        /// </param>
-        /// <param name="outputDirectory">
-        /// The directory in which to write the split XMI files.
-        /// </param>
+        /// <inheritdoc />
         /// <exception cref="InvalidOperationException">
         /// Thrown when the root package or a configured child package is not found in the XMI.
         /// </exception>
         public void Split(string inputPath, SplitterConfig config, string outputDirectory)
         {
-            this.fileService.EnsureDirectory(outputDirectory);
+            this.documentWriter.EnsureDirectory(outputDirectory);
 
-            var document = this.fileService.Load(inputPath);
-            var root = document.Root!;
+            var loaded = this.modelLoader.Load(inputPath);
+            var result = loaded.ReaderResult;
 
-            var rootPackage = FindRootPackage(root, config.RootPackageName);
-            var packageNodes = FindPackageNodes(rootPackage, config);
+            var candidates = CollectPackages(result.Packages, config.RootPackageName);
 
-            var elementIndex = this.BuildElementIndex(config, packageNodes);
+            var rootPackage = string.IsNullOrEmpty(config.RootPackageName)
+                ? null
+                : candidates.First(candidate => candidate.Package.Name == config.RootPackageName).Package;
 
-            if (this.logger.IsEnabled(LogLevel.Information))
-            {
-                this.logger.LogInformation("Indexed {ElementCount} elements across {PackageCount} packages", elementIndex.Count, config.Packages.Count);
-            }
+            var packageNodes = FindPackageNodes(candidates, config);
+            var enclosingModels = candidates
+                .GroupBy(candidate => candidate.Package)
+                .ToDictionary(group => group.Key, group => group.First().Model);
 
-            var packageElementIds = this.BuildPackageElementIds(config, packageNodes);
-
-            var extension = root.Element(Xmi + "Extension");
-            var extensionElements = extension?.Element("elements")?.Elements("element").ToList() ?? [];
-            var extensionConnectors = extension?.Element("connectors")?.Elements("connector").ToList() ?? [];
-
-            var connectorPackageMap = this.extensionBuilder.BuildConnectorPackageMap(
-                extensionConnectors,
-                packageElementIds,
-                config.Packages.Select(packageConfig => packageConfig.Name));
+            var packageElementIds = new Dictionary<string, HashSet<string>>();
 
             foreach (var packageConfig in config.Packages)
             {
-                var clonedPackage = new XElement(packageNodes[packageConfig.Name]);
+                packageElementIds[packageConfig.Name] =
+                    this.documentAssigner.Assign(packageNodes[packageConfig.Name], packageConfig.OutputFile).All();
+            }
 
-                this.referenceRewriter.Rewrite(clonedPackage, packageConfig.Name, elementIndex);
+            // a constraint owned by the root container package would be lost, since that package
+            // is split around and never written; it is moved to the package holding the element
+            // it constrains, and stamped so that it is written to that document
+            foreach (var relocation in this.constraintRelocator.Relocate(rootPackage, packageNodes.Values))
+            {
+                var packageName = packageNodes
+                    .First(entry => ReferenceEquals(entry.Value, relocation.TargetPackage))
+                    .Key;
 
-                var outputDocument = packageConfig.ConvertToLibrary
-                    ? BuildLibraryOutputDocument(clonedPackage)
-                    : this.BuildOutputDocument(
-                        clonedPackage,
-                        packageConfig,
-                        packageElementIds[packageConfig.Name],
-                        extensionElements,
-                        extensionConnectors,
-                        connectorPackageMap);
+                var relocatedIds = this.documentAssigner.Assign(relocation.Constraint, relocation.TargetPackage.DocumentName);
 
+                packageElementIds[packageName].UnionWith(relocatedIds.All());
+
+                this.logger.LogInformation(
+                    "Relocated constraint {ConstraintName} to {PackageName}",
+                    relocation.Constraint.Name,
+                    packageName);
+            }
+
+            if (this.logger.IsEnabled(LogLevel.Information))
+            {
+                this.logger.LogInformation(
+                    "Indexed {ElementCount} elements across {PackageCount} packages",
+                    packageElementIds.Values.Sum(ids => ids.Count),
+                    config.Packages.Count);
+            }
+
+            var extension = result.XmiRoot?.Extensions?.FirstOrDefault();
+
+            if (extension != null && !this.extensionBuilder.CanFilter(extension))
+            {
+                this.logger.LogWarning(
+                    "The {Extender} extension is not understood and is copied unchanged into every output document",
+                    extension.Extender);
+            }
+
+            var connectorPackageMap = extension == null
+                ? []
+                : this.extensionBuilder.BuildConnectorPackageMap(
+                    extension,
+                    packageElementIds,
+                    config.Packages.Select(packageConfig => packageConfig.Name));
+
+            foreach (var packageConfig in config.Packages)
+            {
+                var package = packageNodes[packageConfig.Name];
                 var outputPath = Path.Combine(outputDirectory, packageConfig.OutputFile);
-                this.fileService.Save(outputDocument, outputPath);
+
+                var enclosingModel = enclosingModels[package];
+
+                if (packageConfig.ConvertToLibrary || enclosingModel == null)
+                {
+                    // no model wrapper: either explicitly requested, or the source did not have one
+                    this.documentWriter.Write(package, outputPath, null, null, loaded.UmlNamespaceUri);
+                }
+                else
+                {
+                    // mirror the wrapper of the source document rather than assuming one
+                    var model = new Model
+                    {
+                        Name = enclosingModel.Name,
+                        DocumentName = packageConfig.OutputFile
+                    };
+
+                    model.PackagedElement.Add(package);
+
+                    var extensions = extension == null
+                        ? null
+                        : new List<XmiExtension>
+                        {
+                            this.extensionBuilder.Build(
+                                extension,
+                                packageConfig.Name,
+                                packageElementIds[packageConfig.Name],
+                                connectorPackageMap)
+                        };
+
+                    this.documentWriter.Write(model, outputPath, result.XmiRoot?.Documentation, extensions, loaded.UmlNamespaceUri);
+                }
 
                 if (this.logger.IsEnabled(LogLevel.Information))
                 {
@@ -189,198 +234,112 @@ namespace XSplinter.Services
         }
 
         /// <summary>
-        /// Locates the root container package (e.g. "5. Data Structure") inside
-        /// the <c>uml:Model</c> element.
+        /// Walks the package hierarchy of the document and records every package together with the
+        /// <see cref="IModel"/> that encloses it, so that the split documents can mirror the
+        /// wrapper of the source. When a root container package is configured, only that package
+        /// and its descendants are returned.
         /// </summary>
-        /// <param name="root">
-        /// The root <c>xmi:XMI</c> element of the source document.
+        /// <param name="rootPackages">
+        /// The root packages read from the document.
         /// </param>
         /// <param name="rootPackageName">
-        /// The expected name of the root container package.
+        /// The name of the root container package, or <c>null</c>/empty to search the whole document.
         /// </param>
         /// <returns>
-        /// The <see cref="XElement"/> representing the root container package.
+        /// The discovered packages and their enclosing model.
         /// </returns>
         /// <exception cref="InvalidOperationException">
-        /// Thrown when no package with the given name is found.
+        /// Thrown when a root container package is configured but not found.
         /// </exception>
-        private static XElement FindRootPackage(XElement root, string rootPackageName)
+        private static List<PackageCandidate> CollectPackages(IEnumerable<IPackage> rootPackages, string rootPackageName)
         {
-            var model = root.Element(Uml + "Model")
-                ?? throw new InvalidOperationException("No uml:Model element found in the XMI document.");
+            var candidates = new List<PackageCandidate>();
+            Walk(rootPackages, null, candidates, []);
 
-            return model
-                .Elements("packagedElement")
-                .FirstOrDefault(element => (string?)element.Attribute("name") == rootPackageName)
+            if (string.IsNullOrEmpty(rootPackageName))
+            {
+                return candidates;
+            }
+
+            var container = candidates.FirstOrDefault(candidate => candidate.Package.Name == rootPackageName)
                 ?? throw new InvalidOperationException($"Root package '{rootPackageName}' not found in the XMI document.");
+
+            var scoped = new List<PackageCandidate> { container };
+            Walk(container.Package.PackagedElement.OfType<IPackage>(), container.Model, scoped, []);
+
+            return scoped;
         }
 
         /// <summary>
-        /// Locates the <see cref="XElement"/> for each configured child package
-        /// within the root container package.
+        /// Recursively records the packages and the model enclosing them.
         /// </summary>
-        /// <param name="rootPackage">
-        /// The root container package element.
+        /// <param name="packages">
+        /// The packages to walk.
+        /// </param>
+        /// <param name="enclosingModel">
+        /// The <see cref="IModel"/> enclosing the packages, if any.
+        /// </param>
+        /// <param name="candidates">
+        /// The list collecting the discovered packages.
+        /// </param>
+        /// <param name="visited">
+        /// The already visited packages, guarding against cycles.
+        /// </param>
+        private static void Walk(IEnumerable<IPackage> packages, IModel enclosingModel, List<PackageCandidate> candidates, HashSet<IPackage> visited)
+        {
+            foreach (var package in packages)
+            {
+                if (!visited.Add(package))
+                {
+                    continue;
+                }
+
+                var model = package as IModel ?? enclosingModel;
+
+                candidates.Add(new PackageCandidate(package, model));
+
+                Walk(package.PackagedElement.OfType<IPackage>(), model, candidates, visited);
+            }
+        }
+
+        /// <summary>
+        /// Locates the <see cref="IPackage"/> for each configured package.
+        /// </summary>
+        /// <param name="candidates">
+        /// The packages discovered in the document.
         /// </param>
         /// <param name="config">
         /// The splitter configuration.
         /// </param>
         /// <returns>
-        /// A dictionary mapping each package name to its <see cref="XElement"/>.
+        /// A dictionary mapping each package name to its <see cref="IPackage"/>.
         /// </returns>
         /// <exception cref="InvalidOperationException">
         /// Thrown when a configured package is not found.
         /// </exception>
-        private static Dictionary<string, XElement> FindPackageNodes(XElement rootPackage, SplitterConfig config)
+        private static Dictionary<string, IPackage> FindPackageNodes(List<PackageCandidate> candidates, SplitterConfig config)
         {
+            var scope = string.IsNullOrEmpty(config.RootPackageName)
+                ? "the XMI document"
+                : $"'{config.RootPackageName}'";
+
             return config.Packages.ToDictionary(
                 packageConfig => packageConfig.Name,
-                packageConfig => rootPackage
-                    .Elements("packagedElement")
-                    .FirstOrDefault(element =>
-                        (string?)element.Attribute(Xmi + "type") == "uml:Package"
-                        && (string?)element.Attribute("name") == packageConfig.Name)
+                packageConfig => candidates
+                    .FirstOrDefault(candidate => candidate.Package.Name == packageConfig.Name)?.Package
                     ?? throw new InvalidOperationException(
-                        $"Package '{packageConfig.Name}' not found under '{config.RootPackageName}'."));
+                        $"Package '{packageConfig.Name}' not found under {scope}."));
         }
 
         /// <summary>
-        /// Builds the global element index mapping every <c>xmi:id</c> across
-        /// all configured packages to its owning <see cref="PackageEntry"/>.
+        /// Associates a discovered package with the model that encloses it.
         /// </summary>
-        /// <param name="config">
-        /// The splitter configuration.
+        /// <param name="Package">
+        /// The discovered package.
         /// </param>
-        /// <param name="packageNodes">
-        /// The dictionary of package name to package <see cref="XElement"/>.
+        /// <param name="Model">
+        /// The enclosing <see cref="IModel"/>, or <c>null</c> when the package is not inside a model.
         /// </param>
-        /// <returns>
-        /// The populated element index.
-        /// </returns>
-        private Dictionary<string, PackageEntry> BuildElementIndex(
-            SplitterConfig config,
-            Dictionary<string, XElement> packageNodes)
-        {
-            var elementIndex = new Dictionary<string, PackageEntry>();
-
-            foreach (var packageConfig in config.Packages)
-            {
-                var packageElement = packageNodes[packageConfig.Name];
-                this.elementIndexer.IndexElementIds(packageElement, packageConfig.Name, packageConfig.OutputFile, elementIndex);
-            }
-
-            return elementIndex;
-        }
-
-        /// <summary>
-        /// Builds a dictionary mapping each package name to the set of all
-        /// element identifiers (both <c>xmi:id</c> and <c>xmi:idref</c>) found
-        /// within that package. Used for filtering EA Extension entries.
-        /// </summary>
-        /// <param name="config">
-        /// The splitter configuration.
-        /// </param>
-        /// <param name="packageNodes">
-        /// The dictionary of package name to package <see cref="XElement"/>.
-        /// </param>
-        /// <returns>
-        /// A dictionary mapping each package name to its set of element identifiers.
-        /// </returns>
-        private Dictionary<string, HashSet<string>> BuildPackageElementIds(
-            SplitterConfig config,
-            Dictionary<string, XElement> packageNodes)
-        {
-            return config.Packages.ToDictionary(
-                packageConfig => packageConfig.Name,
-                packageConfig =>
-                {
-                    var ids = new HashSet<string>();
-                    this.elementIndexer.CollectAllIds(packageNodes[packageConfig.Name], ids);
-                    return ids;
-                });
-        }
-
-        /// <summary>
-        /// Constructs a standard library output <see cref="XDocument"/> for a package
-        /// that does not retain the Enterprise Architect model structure. The output
-        /// uses a <c>uml:Package</c> root element without the <c>uml:Model</c> wrapper
-        /// or <c>xmi:Extension</c> section.
-        /// </summary>
-        /// <param name="packageElement">
-        /// The cloned and rewritten package element.
-        /// </param>
-        /// <returns>
-        /// The library output <see cref="XDocument"/>.
-        /// </returns>
-        private static XDocument BuildLibraryOutputDocument(XElement packageElement)
-        {
-            return new XDocument(
-                new XDeclaration("1.0", "windows-1252", null),
-                new XElement(Xmi + "XMI",
-                    new XAttribute(XNamespace.Xmlns + "xmi", Xmi),
-                    new XAttribute(XNamespace.Xmlns + "uml", Uml),
-                    new XElement(Uml + "Package",
-                        new XAttribute(Xmi + "type", "uml:Package"),
-                        packageElement.Attribute(Xmi + "id") is { } idAttr ? new XAttribute(Xmi + "id", idAttr.Value) : null!,
-                        new XAttribute("name", (string?)packageElement.Attribute("name") ?? ""),
-                        packageElement.Elements())));
-        }
-
-        /// <summary>
-        /// Constructs the complete output <see cref="XDocument"/> for a single
-        /// package, including the XMI envelope, UML model wrapper, and filtered
-        /// EA Extension section.
-        /// </summary>
-        /// <param name="packageElement">
-        /// The cloned and rewritten package element.
-        /// </param>
-        /// <param name="packageConfig">
-        /// The configuration for this package.
-        /// </param>
-        /// <param name="packageIds">
-        /// The set of element identifiers belonging to this package.
-        /// </param>
-        /// <param name="extensionElements">
-        /// All element entries from the source EA Extension section.
-        /// </param>
-        /// <param name="extensionConnectors">
-        /// All connector entries from the source EA Extension section.
-        /// </param>
-        /// <param name="connectorPackageMap">
-        /// The mapping of connector IDs to owning package names.
-        /// </param>
-        /// <returns>
-        /// The complete output <see cref="XDocument"/>.
-        /// </returns>
-        private XDocument BuildOutputDocument(
-            XElement packageElement,
-            PackageConfig packageConfig,
-            HashSet<string> packageIds,
-            List<XElement> extensionElements,
-            List<XElement> extensionConnectors,
-            Dictionary<string, string> connectorPackageMap)
-        {
-            return new XDocument(
-                new XDeclaration("1.0", "windows-1252", null),
-                new XElement(Xmi + "XMI",
-                    new XAttribute(XNamespace.Xmlns + "xmi", Xmi),
-                    new XAttribute(XNamespace.Xmlns + "uml", Uml),
-                    new XAttribute(XNamespace.Xmlns + "umldi", Umldi),
-                    new XAttribute(XNamespace.Xmlns + "dc", Dc),
-                    new XElement(Xmi + "Documentation",
-                        new XAttribute("exporter", "Enterprise Architect"),
-                        new XAttribute("exporterVersion", "6.5"),
-                        new XAttribute("exporterID", "1704")),
-                    new XElement(Uml + "Model",
-                        new XAttribute(Xmi + "type", "uml:Model"),
-                        new XAttribute("name", "EA_Model"),
-                        packageElement),
-                    this.extensionBuilder.Build(
-                        packageConfig.Name,
-                        packageIds,
-                        extensionElements,
-                        extensionConnectors,
-                        connectorPackageMap)));
-        }
+        private sealed record PackageCandidate(IPackage Package, IModel Model);
     }
 }

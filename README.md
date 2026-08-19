@@ -1,6 +1,6 @@
 # X-Splinter
 
-**X-Splinter** is a .NET 10 command-line tool that splits a single monolithic Enterprise Architect (EA) XMI export into separate, per-package XMI files. Cross-package references are rewritten from internal `xmi:idref`s into cross-file `href="targetFile.xmi#id"` references, so the resulting files can be loaded independently while types still resolve across files (e.g. with UML4NET).
+**X-Splinter** is a .NET 10 command-line tool that splits a monolithic XMI export into separate, per-package XMI files. Cross-package references become cross-file `href="targetFile.xmi#id"` references, so the resulting files load independently while types still resolve across them. Built on [UML4NET](https://github.com/STARIONGROUP/uml4net).
 
 [![Quality Gate Status](https://sonarcloud.io/api/project_badges/measure?project=STARIONGROUP_X-Splinter&metric=alert_status)](https://sonarcloud.io/summary/new_code?id=STARIONGROUP_X-Splinter)
 [![Code Smells](https://sonarcloud.io/api/project_badges/measure?project=STARIONGROUP_X-Splinter&metric=code_smells)](https://sonarcloud.io/summary/new_code?id=STARIONGROUP_X-Splinter)
@@ -13,24 +13,12 @@
 [![Technical Debt](https://sonarcloud.io/api/project_badges/measure?project=STARIONGROUP_X-Splinter&metric=sqale_index)](https://sonarcloud.io/summary/new_code?id=STARIONGROUP_X-Splinter)
 [![Vulnerabilities](https://sonarcloud.io/api/project_badges/measure?project=STARIONGROUP_X-Splinter&metric=vulnerabilities)](https://sonarcloud.io/summary/new_code?id=STARIONGROUP_X-Splinter)
 
-## Features
-
-- Splits one EA XMI export into one output file per configured UML package.
-- Rewrites cross-package references into resolvable cross-file `href`s.
-- Rebuilds a filtered EA `xmi:Extension` section (elements and connectors) for each package.
-- Optionally emits a package as a plain reusable `uml:Package` library (`convertToLibrary`).
-
-## Build
+## Usage
 
 Requires the **.NET 10 SDK**.
 
 ```bash
 dotnet build X-Splinter.sln
-```
-
-## Usage
-
-```bash
 dotnet run --project XSplinter/XSplinter.csproj -- <input.xmi> <config.json> [--output <dir>]
 ```
 
@@ -39,8 +27,6 @@ dotnet run --project XSplinter/XSplinter.csproj -- <input.xmi> <config.json> [--
 - `--output <dir>` — output directory (optional; defaults to the current directory).
 
 ## Configuration
-
-The configuration is a JSON file describing the root container package and the child packages to extract:
 
 ```json
 {
@@ -53,17 +39,20 @@ The configuration is a JSON file describing the root container package and the c
 }
 ```
 
-- `rootPackageName` — name of the root container package inside the XMI's `uml:Model`.
-- `packages[]` — the packages to extract, each with a `name`, an `outputFile`, and an optional
-  `convertToLibrary` flag. When `convertToLibrary` is `true`, the package is written as a plain
-  `uml:Package` without the EA model wrapper or extension metadata; when `false` (default), the
-  full EA model structure is preserved.
+- `rootPackageName` — *optional*; the root container package to scope the search to. Omit it when
+  the packages sit directly under the model.
+- `packages[]` — the packages to extract, each with a `name`, an `outputFile` and an optional
+  `convertToLibrary` flag. When `true`, the package is written as a plain `uml:Package` without
+  the EA model wrapper or extension metadata; when `false` (default), the full EA model
+  structure is preserved.
 
-A sample configuration is available in [`example/packages.json`](example/packages.json).
+A sample is available in [`example/packages.json`](example/packages.json).
+
+Any UML XMI is supported. Enterprise Architect exports additionally get their `xmi:Extension`
+filtered per package; the UML namespace, the `uml:Model` wrapper and the presence of an
+extension are all taken from the source document.
 
 ## Build Status
-
-GitHub actions are used to build and test the solution.
 
 Branch | Build Status
 ------- | :------------
