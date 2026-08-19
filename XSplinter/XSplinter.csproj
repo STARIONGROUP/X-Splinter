@@ -17,7 +17,7 @@
     <Company>Starion Group S.A.</Company>
     <Copyright>Copyright © 2026 Starion Group S.A.</Copyright>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
-    <PackageTags>EA XMI UML EnterpriseArchitect splitter</PackageTags>
+    <PackageTags>monolithic  XMI UML splitter</PackageTags>
     <RepositoryUrl>https://github.com/STARIONGROUP/X-Splinter.git</RepositoryUrl>
     <RepositoryType>Git</RepositoryType>
     <NeutralLanguage>en-US</NeutralLanguage>

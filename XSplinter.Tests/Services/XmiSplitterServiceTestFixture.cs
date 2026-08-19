@@ -159,6 +159,36 @@ namespace XSplinter.Tests.Services
         }
 
         [Test]
+        public void Verify_that_the_model_wrapper_mirrors_the_source_when_no_name_is_configured()
+        {
+            this.xmiSplitterService.Split("input.xmi", this.config, "output");
+
+            var full = this.written.Single(document => document.Path.EndsWith("Forge.xmi"));
+
+            Assert.That(full.Package.Name, Is.EqualTo("EA_Model"));
+        }
+
+        [Test]
+        public void Verify_that_a_configured_model_name_overrides_the_source_wrapper()
+        {
+            this.config.ModelName = "Mycelium";
+
+            this.xmiSplitterService.Split("input.xmi", this.config, "output");
+
+            var full = this.written.Single(document => document.Path.EndsWith("Forge.xmi"));
+            var library = this.written.Single(document => document.Path.EndsWith("CSharp_Primitives.xmi"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(full.Package.Name, Is.EqualTo("Mycelium"));
+                Assert.That(full.Package.PackagedElement.OfType<IPackage>().Single().Name, Is.EqualTo("Forge"));
+
+                // a library package has no wrapper at all, so the setting does not apply
+                Assert.That(library.Package.Name, Is.EqualTo("Primitives"));
+            });
+        }
+
+        [Test]
         public void Verify_that_the_xmi_documentation_header_is_only_written_for_full_EA_documents()
         {
             this.xmiSplitterService.Split("input.xmi", this.config, "output");

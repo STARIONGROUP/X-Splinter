@@ -196,15 +196,22 @@ namespace XSplinter.Services
 
                 if (packageConfig.ConvertToLibrary || enclosingModel == null)
                 {
-                    // no model wrapper: either explicitly requested, or the source did not have one
+                    // no model wrapper: either explicitly requested, or the source did not have one.
+                    // a name configured for this package therefore renames the package itself, which
+                    // is the top level element of the document
+                    if (!string.IsNullOrEmpty(packageConfig.ModelName))
+                    {
+                        package.Name = packageConfig.ModelName;
+                    }
+
                     this.documentWriter.Write(package, outputPath, null, null, loaded.UmlNamespaceUri);
                 }
                 else
                 {
-                    // mirror the wrapper of the source document rather than assuming one
+                    // use the configured wrapper name, otherwise mirror the source document
                     var model = new Model
                     {
-                        Name = enclosingModel.Name,
+                        Name = QueryModelName(packageConfig, config, enclosingModel),
                         DocumentName = packageConfig.OutputFile
                     };
 
@@ -231,6 +238,33 @@ namespace XSplinter.Services
             }
 
             this.logger.LogInformation("Splitting complete");
+        }
+
+        /// <summary>
+        /// Determines the name of the <c>uml:Model</c> wrapper: the name configured for the package,
+        /// otherwise the name configured for the whole run, otherwise the name of the model that
+        /// encloses the package in the source document.
+        /// </summary>
+        /// <param name="packageConfig">
+        /// The configuration of the package being written.
+        /// </param>
+        /// <param name="config">
+        /// The splitter configuration.
+        /// </param>
+        /// <param name="enclosingModel">
+        /// The model enclosing the package in the source document.
+        /// </param>
+        /// <returns>
+        /// The name to write on the model wrapper.
+        /// </returns>
+        private static string QueryModelName(PackageConfig packageConfig, SplitterConfig config, IModel enclosingModel)
+        {
+            if (!string.IsNullOrEmpty(packageConfig.ModelName))
+            {
+                return packageConfig.ModelName;
+            }
+
+            return string.IsNullOrEmpty(config.ModelName) ? enclosingModel.Name : config.ModelName;
         }
 
         /// <summary>
