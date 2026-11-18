@@ -66,7 +66,7 @@ mockable.
 | --- | --- |
 | `Program.cs` | Entry point: parses args, deserializes the config, calls `Split`. |
 | `Configuration/SplitterConfig.cs`, `PackageConfig.cs` | Config models. |
-| `Services/XmiSplitterService.cs` | Orchestrator: load → find packages (recursively, optionally scoped by `rootPackageName`) → stamp → map connectors → write. Names the `uml:Model` wrapper from `modelName`, else mirrors the source's. Has a convenience ctor and an injectable ctor. |
+| `Services/XmiSplitterService.cs` | Orchestrator: load → find packages (recursively, optionally scoped by `rootPackageName`) → stamp → map connectors → write. Names the `uml:Model` wrapper from `modelName`, else mirrors the source's. Writes each stereotype application to the document its extended element was stamped with, and keeps the packages enclosing the extracted ones out of every extension. Has a convenience ctor and an injectable ctor. |
 | `Services/XmiModelLoader.cs` | UML4NET read, with the EA extender + extension content reader (inert for non-EA files). Also detects the source's UML namespace so output matches the input's UML version. |
 | `Services/PackageDocumentAssigner.cs` | Stamps `IXmiElement.DocumentName`. Traverses only `AggregationKind.Composite` properties (from UML4NET `[Property]` metadata) so *referenced* elements keep pointing at their own document. Returns contained + referenced ids. |
 | `Services/ExtensionBuilder.cs` | Filters the EA extension per package, deciding membership from the parsed EA `Element`/`Connector` and their resolved `ExtendedElement`. `CanFilter` is false for a foreign extension, which is then copied unchanged into every output. |
@@ -85,7 +85,13 @@ mockable.
   `xmi:Documentation` header and `href` targets all match, but expect `utf-8` instead of
   `windows-1252` (UML4NET hardcodes it), different attribute order, `type` as an attribute
   rather than a nested `<type>`, and defaults such as `Generalization::isSubstitutable`
-  elided. UML4NET also promotes EA `<documentation>` into UML `ownedComment`.
+  elided. UML4NET also promotes EA `<documentation>` into UML `ownedComment`, and its 9.x
+  writer emits the header and the extension as `xmi:documentation`/`xmi:extension` carrying an
+  `xmi:type`, where EA writes `xmi:Documentation`/`xmi:Extension`.
+- **The profile itself is not carried over.** Stereotype applications are written with their
+  profile's namespace, but the EA `<profiles>` section is emptied and the model's
+  `profileApplication` is not copied to the new `uml:Model` wrapper: EA references its profiles
+  by a URI no reader can resolve.
 
 ## Conventions
 

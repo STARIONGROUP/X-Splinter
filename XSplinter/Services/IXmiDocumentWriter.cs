@@ -8,9 +8,6 @@
 
 namespace XSplinter.Services
 {
-    using System.Collections.Generic;
-
-    using uml4net;
     using uml4net.Packages;
     using uml4net.xmi.Xmi;
 
@@ -38,17 +35,13 @@ namespace XSplinter.Services
         /// <param name="path">
         /// The destination file path.
         /// </param>
-        /// <param name="documentation">
-        /// The <see cref="Documentation"/> header to emit, or <c>null</c> when the document is
-        /// written without an <c>xmi:Documentation</c> element.
-        /// </param>
-        /// <param name="extensions">
-        /// The <see cref="XmiExtension"/> instances to emit, or <c>null</c> when the document
-        /// is written without an extension section.
+        /// <param name="xmiRoot">
+        /// The <c>xmi:XMI</c> level content to emit alongside the package: the documentation
+        /// header, the extensions and the stereotype applications.
         /// </param>
         /// <param name="umlNamespaceUri">
         /// The UML namespace URI to declare, matching the version of UML used by the source document.
         /// </param>
-        void Write(IPackage package, string path, Documentation documentation, IEnumerable<XmiExtension> extensions, string umlNamespaceUri);
+        void Write(IPackage package, string path, XmiRoot xmiRoot, string umlNamespaceUri);
     }
 }
