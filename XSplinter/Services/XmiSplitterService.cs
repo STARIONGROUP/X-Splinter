@@ -17,6 +17,8 @@ namespace XSplinter.Services
 
     using uml4net;
     using uml4net.Packages;
+    using uml4net.Profiling;
+    using uml4net.xmi.Xmi;
 
     using XSplinter.Configuration;
 
@@ -163,6 +165,13 @@ namespace XSplinter.Services
                     packageName);
             }
 
+            var containerIds = QueryContainerIds(packageNodes.Values);
+
+            foreach (var ids in packageElementIds.Values)
+            {
+                ids.ExceptWith(containerIds);
+            }
+
             if (this.logger.IsEnabled(LogLevel.Information))
             {
                 this.logger.LogInformation(
@@ -204,7 +213,12 @@ namespace XSplinter.Services
                         package.Name = packageConfig.ModelName;
                     }
 
-                    this.documentWriter.Write(package, outputPath, null, null, loaded.UmlNamespaceUri);
+                    var libraryRoot = new XmiRoot
+                    {
+                        StereoTypeApplications = QueryStereotypeApplications(result.XmiRoot, packageConfig.OutputFile)
+                    };
+
+                    this.documentWriter.Write(package, outputPath, libraryRoot, loaded.UmlNamespaceUri);
                 }
                 else
                 {
@@ -217,18 +231,23 @@ namespace XSplinter.Services
 
                     model.PackagedElement.Add(package);
 
-                    var extensions = extension == null
-                        ? null
-                        : new List<XmiExtension>
-                        {
-                            this.extensionBuilder.Build(
-                                extension,
-                                packageConfig.Name,
-                                packageElementIds[packageConfig.Name],
-                                connectorPackageMap)
-                        };
+                    var xmiRoot = new XmiRoot
+                    {
+                        Documentation = result.XmiRoot?.Documentation,
+                        Extensions = extension == null
+                            ? []
+                            :
+                            [
+                                this.extensionBuilder.Build(
+                                    extension,
+                                    packageConfig.Name,
+                                    packageElementIds[packageConfig.Name],
+                                    connectorPackageMap)
+                            ],
+                        StereoTypeApplications = QueryStereotypeApplications(result.XmiRoot, packageConfig.OutputFile)
+                    };
 
-                    this.documentWriter.Write(model, outputPath, result.XmiRoot?.Documentation, extensions, loaded.UmlNamespaceUri);
+                    this.documentWriter.Write(model, outputPath, xmiRoot, loaded.UmlNamespaceUri);
                 }
 
                 if (this.logger.IsEnabled(LogLevel.Information))
@@ -238,6 +257,55 @@ namespace XSplinter.Services
             }
 
             this.logger.LogInformation("Splitting complete");
+        }
+
+        /// <summary>
+        /// Queries the identifiers of the packages that enclose the extracted packages without being
+        /// extracted themselves. Such a container is split around and never written, so no output may
+        /// carry Enterprise Architect entries for it.
+        /// </summary>
+        /// <param name="packages">
+        /// The extracted packages.
+        /// </param>
+        /// <returns>
+        /// The identifiers of the enclosing packages.
+        /// </returns>
+        private static HashSet<string> QueryContainerIds(ICollection<IPackage> packages)
+        {
+            var containerIds = new HashSet<string>();
+
+            foreach (var package in packages)
+            {
+                for (var owner = package.Owner; owner != null; owner = owner.Owner)
+                {
+                    if (owner is IPackage container && !packages.Contains(container) && !string.IsNullOrEmpty(owner.XmiId))
+                    {
+                        containerIds.Add(owner.XmiId);
+                    }
+                }
+            }
+
+            return containerIds;
+        }
+
+        /// <summary>
+        /// Queries the stereotype applications that belong to a document, which are those extending
+        /// an element written to that document.
+        /// </summary>
+        /// <param name="xmiRoot">
+        /// The <c>xmi:XMI</c> level content of the source document.
+        /// </param>
+        /// <param name="documentName">
+        /// The name of the document being written.
+        /// </param>
+        /// <returns>
+        /// The stereotype applications to write to the document.
+        /// </returns>
+        private static List<StereoTypeApplication> QueryStereotypeApplications(XmiRoot xmiRoot, string documentName)
+        {
+            return xmiRoot?.StereoTypeApplications?
+                .Where(application => application.ExtendedElement?.DocumentName == documentName)
+                .ToList() ?? [];
         }
 
         /// <summary>

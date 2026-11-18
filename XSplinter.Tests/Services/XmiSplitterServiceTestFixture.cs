@@ -16,6 +16,7 @@ namespace XSplinter.Tests.Services
 
     using uml4net;
     using uml4net.Packages;
+    using uml4net.Profiling;
     using uml4net.xmi.Readers;
     using uml4net.xmi.Xmi;
 
@@ -34,7 +35,7 @@ namespace XSplinter.Tests.Services
         private Mock<IConstraintRelocator> constraintRelocator;
         private Mock<IExtensionBuilder> extensionBuilder;
         private Mock<IXmiDocumentWriter> documentWriter;
-        private List<(IPackage Package, string Path, Documentation Documentation, IEnumerable<XmiExtension> Extensions, string UmlNamespaceUri)> written;
+        private List<(IPackage Package, string Path, XmiRoot XmiRoot, string UmlNamespaceUri)> written;
         private SplitterConfig config;
         private XmiSplitterService xmiSplitterService;
 
@@ -77,10 +78,10 @@ namespace XSplinter.Tests.Services
             this.written = [];
 
             this.documentWriter
-                .Setup(x => x.Write(It.IsAny<IPackage>(), It.IsAny<string>(), It.IsAny<Documentation>(), It.IsAny<IEnumerable<XmiExtension>>(), It.IsAny<string>()))
-                .Callback<IPackage, string, Documentation, IEnumerable<XmiExtension>, string>(
-                    (package, path, documentation, extensions, umlNamespaceUri) =>
-                        this.written.Add((package, path, documentation, extensions, umlNamespaceUri)));
+                .Setup(x => x.Write(It.IsAny<IPackage>(), It.IsAny<string>(), It.IsAny<XmiRoot>(), It.IsAny<string>()))
+                .Callback<IPackage, string, XmiRoot, string>(
+                    (package, path, xmiRoot, umlNamespaceUri) =>
+                        this.written.Add((package, path, xmiRoot, umlNamespaceUri)));
 
             this.config = new SplitterConfig
             {
@@ -149,12 +150,12 @@ namespace XSplinter.Tests.Services
             {
                 Assert.That(library.Package, Is.Not.InstanceOf<IModel>());
                 Assert.That(library.Package.Name, Is.EqualTo("Primitives"));
-                Assert.That(library.Extensions, Is.Null);
+                Assert.That(library.XmiRoot.Extensions, Is.Empty);
 
                 Assert.That(full.Package, Is.InstanceOf<IModel>());
                 Assert.That(full.Package.Name, Is.EqualTo("EA_Model"));
                 Assert.That(full.Package.PackagedElement.OfType<IPackage>().Single().Name, Is.EqualTo("Forge"));
-                Assert.That(full.Extensions, Is.Not.Null.And.Not.Empty);
+                Assert.That(full.XmiRoot.Extensions, Is.Not.Empty);
             });
         }
 
@@ -198,10 +199,46 @@ namespace XSplinter.Tests.Services
 
             Assert.Multiple(() =>
             {
-                Assert.That(library.Documentation, Is.Null);
-                Assert.That(full.Documentation, Is.Not.Null);
-                Assert.That(full.Documentation.Exporter, Is.EqualTo("Enterprise Architect"));
+                Assert.That(library.XmiRoot.Documentation, Is.Null);
+                Assert.That(full.XmiRoot.Documentation, Is.Not.Null);
+                Assert.That(full.XmiRoot.Documentation.Exporter, Is.EqualTo("Enterprise Architect"));
             });
+        }
+
+        [Test]
+        public void Verify_that_a_stereotype_application_is_written_with_the_element_it_extends()
+        {
+            this.documentAssigner
+                .Setup(x => x.Assign(It.IsAny<IXmiElement>(), It.IsAny<string>()))
+                .Callback<IXmiElement, string>((element, documentName) => element.DocumentName = documentName)
+                .Returns(new PackageElementIds([], []));
+
+            this.xmiSplitterService.Split("input.xmi", this.config, "output");
+
+            var library = this.written.Single(document => document.Path.EndsWith("CSharp_Primitives.xmi"));
+            var full = this.written.Single(document => document.Path.EndsWith("Forge.xmi"));
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(library.XmiRoot.StereoTypeApplications.Select(application => application.XmiId), Is.EqualTo(new[] { "onPrimitives" }));
+                Assert.That(full.XmiRoot.StereoTypeApplications.Select(application => application.XmiId), Is.EqualTo(new[] { "onForge" }));
+            });
+        }
+
+        [Test]
+        public void Verify_that_the_extension_of_a_package_excludes_the_container_it_is_split_out_of()
+        {
+            this.documentAssigner
+                .Setup(x => x.Assign(It.IsAny<IXmiElement>(), It.IsAny<string>()))
+                .Returns(new PackageElementIds(["pkgForge"], ["root"]));
+
+            this.xmiSplitterService.Split("input.xmi", this.config, "output");
+
+            this.extensionBuilder.Verify(x => x.Build(
+                It.IsAny<XmiExtension>(),
+                "Forge",
+                It.Is<HashSet<string>>(ids => ids.SetEquals(new[] { "pkgForge" })),
+                It.IsAny<Dictionary<string, string>>()));
         }
 
         [Test]
@@ -227,8 +264,10 @@ namespace XSplinter.Tests.Services
         private static LoadedModel CreateLoadedModel()
         {
             var root = new Package { XmiId = "root", Name = "5. Data Structure" };
-            root.PackagedElement.Add(new Package { XmiId = "pkgPrim", Name = "Primitives" });
-            root.PackagedElement.Add(new Package { XmiId = "pkgForge", Name = "Forge" });
+            var primitives = new Package { XmiId = "pkgPrim", Name = "Primitives" };
+            var forge = new Package { XmiId = "pkgForge", Name = "Forge" };
+            root.PackagedElement.Add(primitives);
+            root.PackagedElement.Add(forge);
 
             var model = new Model { XmiId = "model", Name = "EA_Model" };
             model.PackagedElement.Add(root);
@@ -239,7 +278,13 @@ namespace XSplinter.Tests.Services
                 XmiRoot = new XmiRoot
                 {
                     Documentation = new Documentation { Exporter = "Enterprise Architect", ExporterVersion = "6.5" },
-                    Extensions = [new XmiExtension { Extender = "Enterprise Architect", ExtenderId = "6.5" }]
+                    Extensions = [new XmiExtension { Extender = "Enterprise Architect", ExtenderId = "6.5" }],
+                    StereoTypeApplications =
+                    [
+                        new StereoTypeApplication { XmiId = "onRoot", ExtendedElement = root },
+                        new StereoTypeApplication { XmiId = "onPrimitives", ExtendedElement = primitives },
+                        new StereoTypeApplication { XmiId = "onForge", ExtendedElement = forge }
+                    ]
                 }
             };
 
