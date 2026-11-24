@@ -54,6 +54,8 @@ Any UML XMI is supported. Enterprise Architect exports additionally get their `x
 filtered per package; the UML namespace, the `uml:Model` wrapper and the presence of an
 extension are all taken from the source document.
 
+Stereotype applications are written to the file that holds the element they extend.
+
 ## Build Status
 
 Branch | Build Status

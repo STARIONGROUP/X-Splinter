@@ -8,12 +8,10 @@
 
 namespace XSplinter.Services
 {
-    using System.Collections.Generic;
     using System.IO;
 
     using Microsoft.Extensions.Logging;
 
-    using uml4net;
     using uml4net.Packages;
     using uml4net.xmi;
     using uml4net.xmi.Settings;
@@ -48,7 +46,7 @@ namespace XSplinter.Services
         }
 
         /// <inheritdoc />
-        public void Write(IPackage package, string path, Documentation documentation, IEnumerable<XmiExtension> extensions, string umlNamespaceUri)
+        public void Write(IPackage package, string path, XmiRoot xmiRoot, string umlNamespaceUri)
         {
             using var scope = XmiWriterBuilder.Create()
                 .WithLogger(this.loggerFactory)
@@ -59,20 +57,7 @@ namespace XSplinter.Services
                     settings.Indent = true;
                 });
 
-            var writer = scope.Build();
-
-            if (extensions == null)
-            {
-                writer.Write(package, path);
-            }
-            else if (documentation == null)
-            {
-                writer.Write(package, path, extensions);
-            }
-            else
-            {
-                writer.Write(package, path, documentation, extensions);
-            }
+            scope.Build().Write([package], path, xmiRoot);
         }
     }
 }
