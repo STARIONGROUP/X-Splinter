@@ -274,9 +274,9 @@ namespace XSplinter.Services
         {
             var containerIds = new HashSet<string>();
 
-            foreach (var package in packages)
+            foreach (var directOwner in packages.Select(package => package.Owner))
             {
-                for (var owner = package.Owner; owner != null; owner = owner.Owner)
+                for (var owner = directOwner; owner != null; owner = owner.Owner)
                 {
                     if (owner is IPackage container && !packages.Contains(container) && !string.IsNullOrEmpty(owner.XmiId))
                     {

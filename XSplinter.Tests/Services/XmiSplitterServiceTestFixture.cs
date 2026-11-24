@@ -30,6 +30,10 @@ namespace XSplinter.Tests.Services
     [TestFixture]
     public class XmiSplitterServiceTestFixture
     {
+        private static readonly string[] PrimitivesApplicationIds = ["onPrimitives"];
+        private static readonly string[] ForgeApplicationIds = ["onForge"];
+        private static readonly string[] ForgeElementIds = ["pkgForge"];
+
         private Mock<IXmiModelLoader> modelLoader;
         private Mock<IPackageDocumentAssigner> documentAssigner;
         private Mock<IConstraintRelocator> constraintRelocator;
@@ -220,8 +224,8 @@ namespace XSplinter.Tests.Services
 
             Assert.Multiple(() =>
             {
-                Assert.That(library.XmiRoot.StereoTypeApplications.Select(application => application.XmiId), Is.EqualTo(new[] { "onPrimitives" }));
-                Assert.That(full.XmiRoot.StereoTypeApplications.Select(application => application.XmiId), Is.EqualTo(new[] { "onForge" }));
+                Assert.That(library.XmiRoot.StereoTypeApplications.Select(application => application.XmiId), Is.EqualTo(PrimitivesApplicationIds));
+                Assert.That(full.XmiRoot.StereoTypeApplications.Select(application => application.XmiId), Is.EqualTo(ForgeApplicationIds));
             });
         }
 
@@ -237,7 +241,7 @@ namespace XSplinter.Tests.Services
             this.extensionBuilder.Verify(x => x.Build(
                 It.IsAny<XmiExtension>(),
                 "Forge",
-                It.Is<HashSet<string>>(ids => ids.SetEquals(new[] { "pkgForge" })),
+                It.Is<HashSet<string>>(ids => ids.SetEquals(ForgeElementIds)),
                 It.IsAny<Dictionary<string, string>>()));
         }
 
